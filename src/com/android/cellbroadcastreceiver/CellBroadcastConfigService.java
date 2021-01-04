@@ -19,6 +19,9 @@ package com.android.cellbroadcastreceiver;
 import static com.android.cellbroadcastreceiver.CellBroadcastReceiver.VDBG;
 
 import android.app.IntentService;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -55,6 +58,7 @@ public class CellBroadcastConfigService extends IntentService {
 
     @VisibleForTesting
     public static final String ACTION_ENABLE_CHANNELS = "ACTION_ENABLE_CHANNELS";
+    public static final String ACTION_UPDATE_SETTINGS_FOR_CARRIER = "UPDATE_SETTINGS_FOR_CARRIER";
 
     public CellBroadcastConfigService() {
         super(TAG);          // use class name for worker thread name
@@ -85,6 +89,32 @@ public class CellBroadcastConfigService extends IntentService {
             } catch (Exception ex) {
                 Log.e(TAG, "exception enabling cell broadcast channels", ex);
             }
+        } else if (ACTION_UPDATE_SETTINGS_FOR_CARRIER.equals(intent.getAction())) {
+            Context c = getApplicationContext();
+            if (CellBroadcastSettings.hasAnyPreferenceChanged(c)) {
+                Log.d(TAG, "Preference has changed from user set, posting notification.");
+
+                CellBroadcastAlertService.createNotificationChannels(c);
+                Intent settingsIntent = new Intent(c, CellBroadcastSettings.class);
+                PendingIntent pi = PendingIntent.getActivity(c,
+                        CellBroadcastAlertService.SETTINGS_CHANGED_NOTIFICATION_ID, settingsIntent,
+                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_UPDATE_CURRENT);
+
+                Notification.Builder builder = new Notification.Builder(c,
+                        CellBroadcastAlertService.NOTIFICATION_CHANNEL_SETTINGS_UPDATES)
+                        .setCategory(Notification.CATEGORY_SYSTEM)
+                        .setContentTitle(c.getString(R.string.notification_cb_settings_changed_title))
+                        .setContentText(c.getString(R.string.notification_cb_settings_changed_text))
+                        .setSmallIcon(R.drawable.ic_settings_gear_outline_24dp)
+                        .setContentIntent(pi);
+                NotificationManager notificationManager = c.getSystemService(
+                        NotificationManager.class);
+                notificationManager.notify(
+                        CellBroadcastAlertService.SETTINGS_CHANGED_NOTIFICATION_ID,
+                        builder.build());
+            }
+            Log.e(TAG, "Reset all preferences");
+            CellBroadcastSettings.resetAllPreferences(getApplicationContext());
         }
     }
 
@@ -131,7 +161,7 @@ public class CellBroadcastConfigService extends IntentService {
 
         // boolean for each user preference checkbox, true for checked, false for unchecked
         // Note: If enableAlertsMasterToggle is false, it disables ALL emergency broadcasts
-        // except for CMAS presidential. i.e. to receive CMAS severe alerts, both
+        // except for always-on alerts e.g, presidential. i.e. to receive CMAS severe alerts, both
         // enableAlertsMasterToggle AND enableCmasSevereAlerts must be true.
         boolean enableAlertsMasterToggle = prefs.getBoolean(
                 CellBroadcastSettings.KEY_ENABLE_ALERTS_MASTER_TOGGLE, true);
@@ -155,9 +185,14 @@ public class CellBroadcastConfigService extends IntentService {
                 && CellBroadcastSettings.isTestAlertsToggleVisible(getApplicationContext())
                 && prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_TEST_ALERTS, false);
 
-        boolean enableAreaUpdateInfoAlerts =
-                CellBroadcastSettings.isAreaUpdateInfoSettingsEnabled(this) &&
-                prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_AREA_UPDATE_INFO_ALERTS, false);
+        boolean enableExerciseAlerts = enableAlertsMasterToggle
+                && res.getBoolean(R.bool.show_separate_exercise_settings)
+                && prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_EXERCISE_ALERTS, false);
+
+        boolean enableAreaUpdateInfoAlerts = res.getBoolean(
+                R.bool.config_showAreaUpdateInfoSettings)
+                && prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_AREA_UPDATE_INFO_ALERTS,
+                false);
 
         boolean enablePublicSafetyMessagesChannelAlerts = enableAlertsMasterToggle
                 && prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_PUBLIC_SAFETY_MESSAGES,
@@ -179,6 +214,7 @@ public class CellBroadcastConfigService extends IntentService {
             log("enableCmasSevereAlerts = " + enableCmasExtremeAlerts);
             log("enableCmasAmberAlerts = " + enableCmasAmberAlerts);
             log("enableTestAlerts = " + enableTestAlerts);
+            log("enableExerciseAlerts = " + enableExerciseAlerts);
             log("enableAreaUpdateInfoAlerts = " + enableAreaUpdateInfoAlerts);
             log("enablePublicSafetyMessagesChannelAlerts = "
                     + enablePublicSafetyMessagesChannelAlerts);
@@ -217,10 +253,9 @@ public class CellBroadcastConfigService extends IntentService {
                 channelManager.getCellBroadcastChannelRanges(
                         R.array.required_monthly_test_range_strings));
 
-        // Exercise is part of test toggle with monthly test and operator defined. some carriers
-        // mandate to show test settings in UI but always enable exercise alert.
-        setCellBroadcastRange(subId, enableTestAlerts ||
-                        res.getBoolean(R.bool.always_enable_exercise_alert),
+        // Enable/Disable exercise test messages.
+        // This could either controlled by main test toggle or separate exercise test toggle.
+        setCellBroadcastRange(subId, enableTestAlerts || enableExerciseAlerts,
                 channelManager.getCellBroadcastChannelRanges(
                         R.array.exercise_alert_range_strings));
 
@@ -295,6 +330,11 @@ public class CellBroadcastConfigService extends IntentService {
 
         if (ranges != null) {
             for (CellBroadcastChannelRange range: ranges) {
+                if (range.mAlwaysOn) {
+                    log("mAlwaysOn is set to true, enable the range: " + range.mStartId
+                            + ":" + range.mEndId);
+                    enable = true;
+                }
                 if (enable) {
                     manager.enableCellBroadcastRange(range.mStartId, range.mEndId, range.mRanType);
                 } else {

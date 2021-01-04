@@ -20,13 +20,16 @@ import android.annotation.NonNull;
 import android.content.ContentProviderClient;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.os.RemoteException;
+import android.preference.PreferenceManager;
 import android.provider.Telephony;
 import android.provider.Telephony.CellBroadcasts;
 import android.util.Log;
+
 import com.android.internal.annotations.VisibleForTesting;
 
 /**
@@ -42,6 +45,17 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "cell_broadcasts.db";
     @VisibleForTesting
     public static final String TABLE_NAME = "broadcasts";
+
+    // Preference key for whether the data migration from pre-R CBR app was complete.
+    public static final String KEY_LEGACY_DATA_MIGRATION = "legacy_data_migration";
+
+    /**
+     * Is the message pending for sms synchronization.
+     * when received cellbroadcast message in direct boot mode, we will retry synchronizing
+     * alert message to sms inbox after user unlock if needed.
+     * <P>Type: Boolean</P>
+     */
+    public static final String SMS_SYNC_PENDING = "isSmsSyncPending";
 
     /*
      * Query columns for instantiating SmsCbMessage.
@@ -97,7 +111,8 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
                 + Telephony.CellBroadcasts.CMAS_RESPONSE_TYPE + " INTEGER,"
                 + Telephony.CellBroadcasts.CMAS_SEVERITY + " INTEGER,"
                 + Telephony.CellBroadcasts.CMAS_URGENCY + " INTEGER,"
-                + Telephony.CellBroadcasts.CMAS_CERTAINTY + " INTEGER);";
+                + Telephony.CellBroadcasts.CMAS_CERTAINTY + " INTEGER,"
+                + SMS_SYNC_PENDING + " BOOLEAN);";
     }
 
 
@@ -107,8 +122,9 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
      * Database version 10: adds ETWS and CMAS columns and CDMA support (support removed)
      * Database version 11: adds delivery time index
      * Database version 12: add slotIndex
+     * Database version 13: add smsSyncPending
      */
-    private static final int DATABASE_VERSION = 12;
+    private static final int DATABASE_VERSION = 13;
 
     private final Context mContext;
     final boolean mLegacyProvider;
@@ -120,6 +136,13 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
         mLegacyProvider = legacyProvider;
     }
 
+    @VisibleForTesting
+    public CellBroadcastDatabaseHelper(Context context, boolean legacyProvider, String dbName) {
+        super(context, dbName, null, DATABASE_VERSION);
+        mContext = context;
+        mLegacyProvider = legacyProvider;
+    }
+
     @Override
     public void onCreate(SQLiteDatabase db) {
         db.execSQL(getStringForCellBroadcastTableCreation(TABLE_NAME));
@@ -127,7 +150,7 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX IF NOT EXISTS deliveryTimeIndex ON " + TABLE_NAME
                 + " (" + Telephony.CellBroadcasts.DELIVERY_TIME + ");");
         if (!mLegacyProvider) {
-            migrateFromLegacy(db);
+            migrateFromLegacyIfNeeded(db);
         }
     }
 
@@ -143,6 +166,10 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN "
                     + Telephony.CellBroadcasts.SLOT_INDEX + " INTEGER DEFAULT 0;");
         }
+        if (oldVersion < 13) {
+            db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN " + SMS_SYNC_PENDING
+                    + " BOOLEAN DEFAULT 0;");
+        }
     }
 
     /**
@@ -152,7 +179,13 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
      * from OEM app.
      */
     @VisibleForTesting
-    public void migrateFromLegacy(@NonNull SQLiteDatabase db) {
+    public void migrateFromLegacyIfNeeded(@NonNull SQLiteDatabase db) {
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(mContext);
+        if (sp.getBoolean(CellBroadcastDatabaseHelper.KEY_LEGACY_DATA_MIGRATION, false)) {
+            log("Data migration was complete already");
+            return;
+        }
+
         try (ContentProviderClient client = mContext.getContentResolver()
                 .acquireContentProviderClient(Telephony.CellBroadcasts.AUTHORITY_LEGACY)) {
             if (client == null) {
@@ -171,27 +204,41 @@ public class CellBroadcastDatabaseHelper extends SQLiteOpenHelper {
                     for (String column : QUERY_COLUMNS) {
                         copyFromCursorToContentValues(column, c, values);
                     }
+                    // remove the primary key to avoid UNIQUE constraint failure.
+                    values.remove(Telephony.CellBroadcasts._ID);
 
-                    if (db.insert(TABLE_NAME, null, values) == -1) {
-                        // We only have one shot to migrate data, so log and
-                        // keep marching forward
-                        loge("Failed to insert " + values + "; continuing");
+                    try {
+                        if (db.insert(TABLE_NAME, null, values) == -1) {
+                            // We only have one shot to migrate data, so log and
+                            // keep marching forward
+                            loge("Failed to insert " + values + "; continuing");
+                        }
+                    } catch (Exception e) {
+                        // If insert for one message fails, continue with other messages
+                        loge("Failed to insert " + values + " due to exception: " + e);
                     }
                 }
 
-                db.setTransactionSuccessful();
                 log("Finished migration from legacy provider");
             } catch (RemoteException e) {
                 throw new IllegalStateException(e);
             } finally {
+                // if beginTransaction() is called then setTransactionSuccessful() must be called.
+                // This is a nested begin/end transcation block -- since this is called from
+                // onCreate() which is inside another block in SQLiteOpenHelper. If a nested
+                // transaction fails, all transaction fail and that would result in table not being
+                // created (it's created in onCreate()).
+                db.setTransactionSuccessful();
                 db.endTransaction();
             }
         } catch (Exception e) {
             // We have to guard ourselves against any weird behavior of the
             // legacy provider by trying to catch everything
             loge("Failed migration from legacy provider: " + e);
+        } finally {
+            // Mark data migration was triggered to make sure this is done only once.
+            sp.edit().putBoolean(KEY_LEGACY_DATA_MIGRATION, true).commit();
         }
-
     }
 
     public static void copyFromCursorToContentValues(@NonNull String column, @NonNull Cursor cursor,

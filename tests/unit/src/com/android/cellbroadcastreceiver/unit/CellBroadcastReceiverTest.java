@@ -28,6 +28,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
+import android.content.ContentProvider;
+import android.content.ContentProviderClient;
 import android.content.ContentResolver;
 import android.content.IContentProvider;
 import android.content.Intent;
@@ -45,6 +47,7 @@ import android.telephony.SubscriptionManager;
 import android.telephony.cdma.CdmaSmsCbProgramData;
 
 import com.android.cellbroadcastreceiver.CellBroadcastAlertService;
+import com.android.cellbroadcastreceiver.CellBroadcastContentProvider;
 import com.android.cellbroadcastreceiver.CellBroadcastListActivity;
 import com.android.cellbroadcastreceiver.CellBroadcastReceiver;
 import com.android.cellbroadcastreceiver.CellBroadcastSettings;
@@ -119,37 +122,51 @@ public class CellBroadcastReceiverTest extends CellBroadcastTest {
         doReturn(mConfiguration).when(mResources).getConfiguration();
         mCellBroadcastReceiver = spy(new CellBroadcastReceiver());
         doReturn(mResources).when(mCellBroadcastReceiver).getResourcesMethod();
-        doNothing().when(mCellBroadcastReceiver).startConfigService();
+        doNothing().when(mCellBroadcastReceiver).startConfigServiceToEnableChannels();
         doReturn(mContext).when(mContext).getApplicationContext();
         doReturn(mPackageName).when(mContext).getPackageName();
-    }
-
-    @Test
-    public void testOnReceive_actionMarkAsRead() {
-        doReturn(CellBroadcastReceiver.ACTION_MARK_AS_READ).when(mIntent).getAction();
-        doNothing().when(mCellBroadcastReceiver).getCellBroadcastTask(anyLong());
-        mCellBroadcastReceiver.onReceive(mContext, mIntent);
-        verify(mIntent).getLongExtra(CellBroadcastReceiver.EXTRA_DELIVERY_TIME, -1);
-        verify(mCellBroadcastReceiver).getCellBroadcastTask(anyLong());
+        doReturn(mSharedPreferences).when(mContext).getSharedPreferences(anyString(), anyInt());
     }
 
     @Test
     public void testOnReceive_actionCarrierConfigChanged() {
         doReturn(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED).when(mIntent).getAction();
-        doNothing().when(mCellBroadcastReceiver).initializeSharedPreference();
+        doReturn(mDefaultSharedPreferences).when(mCellBroadcastReceiver)
+                .getDefaultSharedPreferences();
+        doNothing().when(mCellBroadcastReceiver).initializeSharedPreference(any(), anyInt());
         doNothing().when(mCellBroadcastReceiver).enableLauncher();
         mCellBroadcastReceiver.onReceive(mContext, mIntent);
-        verify(mCellBroadcastReceiver).initializeSharedPreference();
-        verify(mCellBroadcastReceiver).startConfigService();
+        verify(mCellBroadcastReceiver).initializeSharedPreference(any(), anyInt());
+        verify(mCellBroadcastReceiver).startConfigServiceToEnableChannels();
         verify(mCellBroadcastReceiver).enableLauncher();
+    }
+
+    @Test
+    public void testOnReceive_actionCarrierConfigChangedOnRebroadcast() {
+        doReturn(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED).when(mIntent).getAction();
+        doReturn(true).when(mIntent)
+                .getBooleanExtra("android.telephony.extra.REBROADCAST_ON_UNLOCK", false);
+        mCellBroadcastReceiver.onReceive(mContext, mIntent);
+        verify(mCellBroadcastReceiver, never()).initializeSharedPreference(any(), anyInt());
+        verify(mCellBroadcastReceiver, never()).startConfigServiceToEnableChannels();
+        verify(mCellBroadcastReceiver, never()).enableLauncher();
+    }
+
+    @Test
+    public void testOnReceive_actionBootCompleted() {
+        doReturn(mContentResolver).when(mContext).getContentResolver();
+        doReturn(mContentProviderClient).when(mContentResolver).acquireContentProviderClient(
+                "cellbroadcasts-app");
+        doReturn(Intent.ACTION_BOOT_COMPLETED).when(mIntent).getAction();
+        mCellBroadcastReceiver.onReceive(mContext, mIntent);
     }
 
     @Test
     public void testOnReceive_cellbroadcastStartConfigAction() {
         doReturn(CellBroadcastReceiver.CELLBROADCAST_START_CONFIG_ACTION).when(mIntent).getAction();
         mCellBroadcastReceiver.onReceive(mContext, mIntent);
-        verify(mCellBroadcastReceiver, never()).initializeSharedPreference();
-        verify(mCellBroadcastReceiver).startConfigService();
+        verify(mCellBroadcastReceiver, never()).initializeSharedPreference(any(), anyInt());
+        verify(mCellBroadcastReceiver).startConfigServiceToEnableChannels();
     }
 
     @Test
@@ -158,8 +175,8 @@ public class CellBroadcastReceiverTest extends CellBroadcastTest {
                 .when(mIntent).getAction();
         doReturn(mUserManager).when(mContext).getSystemService(anyString());
         mCellBroadcastReceiver.onReceive(mContext, mIntent);
-        verify(mCellBroadcastReceiver, never()).initializeSharedPreference();
-        verify(mCellBroadcastReceiver).startConfigService();
+        verify(mCellBroadcastReceiver, never()).initializeSharedPreference(any(), anyInt());
+        verify(mCellBroadcastReceiver).startConfigServiceToEnableChannels();
     }
 
     @Test
@@ -203,7 +220,7 @@ public class CellBroadcastReceiverTest extends CellBroadcastTest {
         doReturn(true).when(mCellBroadcastReceiver).sharedPrefsHaveDefaultValues();
         doNothing().when(mCellBroadcastReceiver).adjustReminderInterval();
 
-        mCellBroadcastReceiver.initializeSharedPreference();
+        mCellBroadcastReceiver.initializeSharedPreference(any(), anyInt());
         verify(mCellBroadcastReceiver).getDefaultSharedPreferences();
     }
 
@@ -212,7 +229,7 @@ public class CellBroadcastReceiverTest extends CellBroadcastTest {
         doReturn("An invalid action").when(mIntent).getAction();
         doReturn(false).when(mCellBroadcastReceiver).isSystemUser();
 
-        mCellBroadcastReceiver.initializeSharedPreference();
+        mCellBroadcastReceiver.initializeSharedPreference(any(), anyInt());
         verify(mSharedPreferences, never()).getBoolean(anyString(), anyBoolean());
     }
 
