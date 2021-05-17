@@ -85,7 +85,7 @@
     <string name="enable_emergency_alerts_message_title" msgid="661894007489847468">"Шашылыш билдирүүлөр"</string>
     <string name="enable_emergency_alerts_message_summary" msgid="7574617515441602546">"Жашоого коркунуч туудурган окуялар тууралуу эскертүү"</string>
     <string name="enable_cmas_test_alerts_title" msgid="7194966927004755266">"Сынамык эскертүүлөр"</string>
-    <string name="enable_cmas_test_alerts_summary" msgid="2083089933271720217">"CMAS системасынын шашылыш билдирүүлөрүн байланыш операторунун сыноолору жана ай сайын аткарылуучу сыноолор аркылуу алуу"</string>
+    <string name="enable_cmas_test_alerts_summary" msgid="2083089933271720217">"Байланыш операторунан сынамык билдирүүлөрдү жана CMAS системасынан ай сайын билдирүүлөрдү алып турасыз"</string>
     <!-- no translation found for enable_exercise_test_alerts_title (6030780598569873865) -->
     <skip />
     <string name="enable_exercise_test_alerts_summary" msgid="4276766794979567304">"Шашылыш билдирүүнү алуу: Көнүгүү/Көнүгүү билдирүүсү"</string>
@@ -97,7 +97,7 @@
     <string name="override_dnd_title" msgid="5120805993144214421">"Эскертүү ар дайым катуу ойнотулсун"</string>
     <string name="override_dnd_summary" msgid="9026675822792800258">"\"Тынчымды алба\" жана үн көлөмүнүн башка жөндөөлөрүн этибарга албоо"</string>
     <string name="enable_area_update_info_alerts_title" msgid="3442042268424617226">"Аймакты жаңыртуу боюнча таркатмалар"</string>
-    <string name="enable_area_update_info_alerts_summary" msgid="6437816607144264910">"SIM-картанын абалы тууралуу жаңыртылган маалымат көрсөтүлсүн"</string>
+    <string name="enable_area_update_info_alerts_summary" msgid="6437816607144264910">"SIM-картанын абалы тууралуу жаңыртылган маалымат көрүнсүн"</string>
     <string name="cmas_category_heading" msgid="3923503130776640717">"Шашылыш билдирүүнүн категориясы:"</string>
     <string name="cmas_category_geo" msgid="4979494217069688527">"Геофизакалык"</string>
     <string name="cmas_category_met" msgid="7563732573851773537">"Метеорологиялык"</string>
