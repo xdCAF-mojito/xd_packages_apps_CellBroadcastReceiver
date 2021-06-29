@@ -42,6 +42,7 @@ import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.preference.PreferenceManager;
 import android.provider.Telephony;
+import android.telephony.CarrierConfigManager;
 import android.service.notification.StatusBarNotification;
 import android.telephony.PhoneStateListener;
 import android.telephony.SmsCbEtwsInfo;
@@ -457,6 +458,11 @@ public class CellBroadcastAlertService extends Service {
         boolean emergencyAlertEnabled =
                 prefs.getBoolean(CellBroadcastSettings.KEY_ENABLE_ALERTS_MASTER_TOGGLE, true);
         int channel = message.getServiceCategory();
+
+        // Check if ETWS/CMAS test message is forced to disabled on the device.
+        boolean forceDisableEtwsCmasTest =
+                CellBroadcastSettings.isFeatureEnabled(this,
+                        CarrierConfigManager.KEY_CARRIER_FORCE_DISABLE_ETWS_CMAS_TEST_BOOL, false);
 
         SmsCbEtwsInfo etwsInfo = message.getEtwsWarningInfo();
         if ((etwsInfo != null && etwsInfo.getWarningType()

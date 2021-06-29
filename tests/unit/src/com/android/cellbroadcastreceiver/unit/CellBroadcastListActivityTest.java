@@ -47,6 +47,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import android.app.Fragment;
+import android.app.FragmentManager;
 import android.app.NotificationManager;
 import android.database.Cursor;
 import android.database.MatrixCursor;
@@ -55,6 +57,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.UserManager;
 import android.provider.Telephony;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -219,7 +222,6 @@ public class CellBroadcastListActivityTest extends
         // create mock delete menu item
         MenuItem mockMenuItem = mock(MenuItem.class);
         doReturn(MENU_DELETE).when(mockMenuItem).getItemId();
-        activity.mListFragment.toggleSelectedItem(1, 1);
 
         // must call looper.prepare to create alertdialog
         Looper.prepare();
@@ -231,7 +233,6 @@ public class CellBroadcastListActivityTest extends
                         CellBroadcastListActivity.CursorLoaderListFragment.KEY_DELETE_DIALOG));
 
         verify(mockCursor, atLeastOnce()).getColumnIndexOrThrow(eq(Telephony.CellBroadcasts._ID));
-        activity.mListFragment.clearSelectedMessages();
         stopActivity();
     }
 
