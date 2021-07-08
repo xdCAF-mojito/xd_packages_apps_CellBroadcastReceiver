@@ -224,7 +224,7 @@ public class CellBroadcastSearchIndexableProvider extends SearchIndexablesProvid
             cursor.addRow(ref);
         }
 
-        if (!CellBroadcastSettings.isAreaUpdateInfoSettingsEnabled(getContext())) {
+        if (!res.getBoolean(R.bool.config_showAreaUpdateInfoSettings)) {
             ref = new Object[1];
             ref[COLUMN_INDEX_NON_INDEXABLE_KEYS_KEY_VALUE] =
                     CellBroadcastSettings.KEY_ENABLE_AREA_UPDATE_INFO_ALERTS;
